@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Gestión de Actas Comunales</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1e3a8a">
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen flex flex-col">
+
+  <!-- Header / Navbar -->
+  <header class="bg-indigo-900 text-white shadow-lg sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+      <div class="flex items-center space-x-3">
+        <i class="fa-solid me-2 fa-diagram-project text-2xl text-amber-400"></i>
+        <h1 class="text-xl font-bold tracking-wide">ActasComunales PWA</h1>
+      </div>
+      <nav class="flex space-x-2">
+        <button id="btnNavCargar" onclick="cambiarVista('cargar')" class="px-4 py-2 rounded-lg bg-indigo-700 hover:bg-indigo-600 transition flex items-center space-x-2 text-sm font-medium">
+          <i class="fa-solid fa-file-upload"></i>
+          <span>Cargar Acta</span>
+        </button>
+        <button id="btnNavDashboard" onclick="cambiarVista('dashboard')" class="px-4 py-2 rounded-lg hover:bg-indigo-800 transition flex items-center space-x-2 text-sm font-medium">
+          <i class="fa-solid fa-chart-pie"></i>
+          <span>Dashboard</span>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Contenido Principal -->
+  <main class="flex-grow max-w-7xl w-full mx-auto p-4 sm:p-6">
+
+    <!-- Configuración Inicial de API URL -->
+    <div id="bannerConfig" class="mb-6 bg-amber-50 border-l-4 border-amber-500 p-4 rounded shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div class="flex items-center space-x-3">
+        <i class="fa-solid fa-gear text-amber-600 text-xl"></i>
+        <div>
+          <p class="font-semibold text-amber-800">Configuración de Endpoints</p>
+          <p class="text-xs text-amber-700">Ingresa la URL del Web App de Apps Script y la clave de Google Gemini API.</p>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-2 w-full sm:w-auto">
+        <input type="password" id="geminiApiKey" placeholder="API Key de Gemini" class="px-3 py-1.5 text-sm border rounded text-slate-800 focus:outline-indigo-600 w-full sm:w-48">
+        <input type="text" id="appsScriptUrl" placeholder="URL Apps Script Exec" class="px-3 py-1.5 text-sm border rounded text-slate-800 focus:outline-indigo-600 w-full sm:w-64">
+        <button onclick="guardarConfiguracion()" class="bg-amber-600 hover:bg-amber-700 text-white px-4 py-1.5 rounded text-sm font-semibold transition">Guardar</button>
+      </div>
+    </div>
+
+    <!-- VISTA 1: CARGA Y EDICIÓN DE ACTAS -->
+    <section id="vistaCargar" class="space-y-6">
+      
+      <!-- Zona de Carga de Archivos -->
+      <div class="bg-white p-6 rounded-xl shadow-md border border-slate-200">
+        <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+          <i class="fa-solid fa-cloud-arrow-up text-indigo-600"></i> Procesar Nueva Acta Escaneada
+        </h2>
+        <div class="border-2 border-dashed border-indigo-200 rounded-xl p-8 text-center hover:bg-indigo-50/50 transition cursor-pointer" onclick="document.getElementById('inputPdf').click()">
+          <input type="file" id="inputPdf" accept="application/pdf,image/*" class="hidden" onchange="procesarArchivo(event)">
+          <i class="fa-solid fa-file-pdf text-5xl text-indigo-400 mb-3"></i>
+          <p class="text-slate-700 font-medium">Haz clic aquí para seleccionar el acta (PDF o Imagen)</p>
+          <p class="text-xs text-slate-400 mt-1">Soporta documentos escaneados y fotos de actas manuscritas</p>
+        </div>
+        
+        <!-- Bar de Progreso -->
+        <div id="progresoCarga" class="hidden mt-4 space-y-2">
+          <div class="flex justify-between text-xs font-semibold text-slate-600">
+            <span id="txtEstadoProgreso">Analizando documento con Inteligencia Artificial...</span>
+            <span id="txtPorcentajeProgreso">0%</span>
+          </div>
+          <div class="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+            <div id="barProgreso" class="bg-indigo-600 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Formulario de Edición Manual (Aparece tras procesar) -->
+      <div id="formEdicion" class="hidden bg-white p-6 rounded-xl shadow-md border border-slate-200 space-y-6">
+        
+        <div class="flex justify-between items-center border-b pb-4">
+          <div>
+            <h3 class="text-xl font-bold text-indigo-900">Revisión y Edición de Datos Extraídos</h3>
+            <p class="text-xs text-slate-500">Verifica la información detectada y realiza correcciones manuales antes de guardar en la BD.</p>
+          </div>
+          <span id="badgeDuplicado" class="hidden px-3 py-1 text-xs font-bold rounded-full bg-red-100 text-red-700 border border-red-300 flex items-center gap-1">
+            <i class="fa-solid fa-triangle-exclamation"></i> Posible Duplicado Detectado
+          </span>
+        </div>
+
+        <!-- Sección 1: Datos de la Comuna -->
+        <div class="space-y-4">
+          <h4 class="font-bold text-slate-700 text-sm uppercase tracking-wider text-indigo-700 flex items-center gap-2">
+            <i class="fa-solid fa-landmark"></i> Información Territorial de la Comuna
+          </h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Nombre de la Comuna</label>
+              <input type="text" id="edit_nombre_comuna" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Código SITUR Comuna</label>
+              <input type="text" id="edit_codigo_situr" onblur="validarDuplicadoComuna()" class="w-full p-2 border rounded text-sm font-mono focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Código COM</label>
+              <input type="text" id="edit_codigo_com" class="w-full p-2 border rounded text-sm font-mono focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">RIF Comuna</label>
+              <input type="text" id="edit_rif" class="w-full p-2 border rounded text-sm font-mono focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Estado</label>
+              <input type="text" id="edit_estado" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Municipio</label>
+              <input type="text" id="edit_municipio" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Parroquia</label>
+              <input type="text" id="edit_parroquia" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">Fecha de la Asamblea</label>
+              <input type="date" id="edit_fecha_asamblea" onblur="validarDuplicadoComuna()" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500">
+            </div>
+          </div>
+        </div>
+
+        <!-- Sección 2: Minuta y Cambios de Proyectos -->
+        <div class="space-y-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
+          <h4 class="font-bold text-slate-700 text-sm uppercase tracking-wider text-indigo-700 flex items-center gap-2">
+            <i class="fa-solid fa-[#f59e0b] fa-scroll"></i> Cambios y Modificaciones en Minuta
+          </h4>
+          <div class="flex items-center space-x-3 mb-2">
+            <input type="checkbox" id="edit_hubo_cambio" class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500">
+            <label for="edit_hubo_cambio" class="text-sm font-bold text-slate-700">¿Se realizó sustitución o cambio de proyectos en la asamblea?</label>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Detalle del Cambio / Observación de Minuta</label>
+            <textarea id="edit_detalle_cambio" rows="2" class="w-full p-2 border rounded text-sm focus:ring-2 focus:ring-indigo-500" placeholder="Ej: Se sustituyó el proyecto X por la rehabilitación del centro cultural..."></textarea>
+          </div>
+        </div>
+
+        <!-- Sección 3: Participación y Asistencia por Consejo Comunal -->
+        <div class="space-y-4">
+          <div class="flex justify-between items-center">
+            <h4 class="font-bold text-slate-700 text-sm uppercase tracking-wider text-indigo-700 flex items-center gap-2">
+              <i class="fa-solid fa-users"></i> Asistencia y Participación por Consejo Comunal
+            </h4>
+            <div class="flex items-center space-x-2">
+              <span class="text-xs font-bold text-slate-600">Total Asistentes Comuna:</span>
+              <input type="number" id="edit_total_asistentes" class="w-24 p-1.5 border rounded text-sm font-bold text-indigo-900 bg-indigo-50 text-center">
+            </div>
+          </div>
+          
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr class="bg-slate-100 text-slate-700">
+                  <th class="p-2 border">Consejo Comunal</th>
+                  <th class="p-2 border w-32">N° Asistentes</th>
+                  <th class="p-2 border w-12 text-center">Acción</th>
+                </tr>
+              </thead>
+              <tbody id="tblParticipacionCC">
+                <!-- Filas dinámicas -->
+              </tbody>
+            </table>
+          </div>
+          <button type="button" onclick="agregarFilaCC()" class="text-xs bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded font-semibold text-slate-700 flex items-center gap-1">
+            <i class="fa-solid fa-plus"></i> Añadir Consejo Comunal
+          </button>
+        </div>
+
+        <!-- Sección 4: Lista de Proyectos Postulados -->
+        <div class="space-y-4">
+          <h4 class="font-bold text-slate-700 text-sm uppercase tracking-wider text-indigo-700 flex items-center gap-2">
+            <i class="fa-solid fa-list-check"></i> Proyectos Postulados (Hasta 7)
+          </h4>
+          <div id="contenedorProyectos" class="space-y-4">
+            <!-- Proyectos dinámicos -->
+          </div>
+          <button type="button" onclick="agregarTarjetaProyecto()" class="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 px-3 py-1.5 rounded font-semibold flex items-center gap-1">
+            <i class="fa-solid fa-plus"></i> Agregar Otro Proyecto
+          </button>
+        </div>
+
+        <!-- Botones de Acción final -->
+        <div class="pt-6 border-t flex flex-col sm:flex-row justify-end gap-3">
+          <button type="button" onclick="cancelarEdicion()" class="px-5 py-2.5 rounded-lg border text-slate-600 hover:bg-slate-100 font-semibold text-sm">Cancelar</button>
+          <button type="button" onclick="guardarActaEnBD()" id="btnGuardarBD" class="px-6 py-2.5 rounded-lg bg-indigo-700 hover:bg-indigo-800 text-white font-bold text-sm shadow-md flex items-center justify-center gap-2">
+            <i class="fa-solid fa-floppy-disk"></i> Confirmar y Guardar en BD + Drive
+          </button>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- VISTA 2: DASHBOARD ESTADÍSTICO -->
+    <section id="vistaDashboard" class="hidden space-y-6">
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 class="text-2xl font-bold text-indigo-950">Dashboard de Análisis Comunal</h2>
+          <p class="text-xs text-slate-500">Métricas consolidadas a partir de las actas procesadas en la base de datos.</p>
+        </div>
+        <button onclick="cargarDatosDashboard()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-2 rounded shadow flex items-center gap-2">
+          <i class="fa-solid fa-rotate-right"></i> Actualizar Métricas
+        </button>
+      </div>
+
+      <!-- Tarjetas de Resumen KPI -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div>
+            <p class="text-xs text-slate-400 font-bold uppercase">Total Actas Registradas</p>
+            <p id="kpiTotalActas" class="text-3xl font-extrabold text-indigo-900 mt-1">0</p>
+          </div>
+          <div class="bg-indigo-100 p-3 rounded-lg text-indigo-700"><i class="fa-solid fa-file-lines text-2xl"></i></div>
+        </div>
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div>
+            <p class="text-xs text-slate-400 font-bold uppercase">Proyectos Carga Global</p>
+            <p id="kpiTotalProyectos" class="text-3xl font-extrabold text-teal-700 mt-1">0</p>
+          </div>
+          <div class="bg-teal-100 p-3 rounded-lg text-teal-700"><i class="fa-solid fa-diagram-project text-2xl"></i></div>
+        </div>
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div>
+            <p class="text-xs text-slate-400 font-bold uppercase">Familias Beneficiadas</p>
+            <p id="kpiTotalFamilias" class="text-3xl font-extrabold text-amber-700 mt-1">0</p>
+          </div>
+          <div class="bg-amber-100 p-3 rounded-lg text-amber-700"><i class="fa-solid fa-people-roof text-2xl"></i></div>
+        </div>
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div>
+            <p class="text-xs text-slate-400 font-bold uppercase">Tasa Cambio de Minuta</p>
+            <p id="kpiTasaCambio" class="text-3xl font-extrabold text-rose-700 mt-1">0%</p>
+          </div>
+          <div class="bg-rose-100 p-3 rounded-lg text-rose-700"><i class="fa-solid fa-arrow-rotate-left text-2xl"></i></div>
+        </div>
+      </div>
+
+      <!-- Gráficos Estadísticos -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Gráfico 1: Transformaciones 7T -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <h3 class="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+            <i class="fa-solid fa-chart-bar text-indigo-600"></i> Proyectos por Línea de Transformación (7T)
+          </h3>
+          <div class="h-64">
+            <canvas id="chart7T"></canvas>
+          </div>
+        </div>
+
+        <!-- Gráfico 2: Asistencia por Consejo Comunal -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <h3 class="text-sm font-bold text-slate-700 mb-4 flex items-center gap-2">
+            <i class="fa-solid fa-chart-pie text-amber-600"></i> Distribución de Participación Comunal
+          </h3>
+          <div class="h-64">
+            <canvas id="chartParticipacion"></canvas>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- Script Lógica Frontend -->
+  <script src="app.js"></script>
+</body>
+</html>
