@@ -1,0 +1,15 @@
+{
+  "name": "Sistema de Actas Comunales",
+  "short_name": "ActasPWA",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#1e3a8a",
+  "theme_color": "#1e3a8a",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2618/2618245.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
